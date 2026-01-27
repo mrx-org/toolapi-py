@@ -7,6 +7,10 @@ classifiers = [
     "Programming Language :: Python :: Implementation :: PyPy",
 ]
 dynamic = ["version"]
+dependencies = []
+
+[project.optional-dependencies]
+test = ["mrzerocore>=0.2.4"]
 
 [tool.maturin]
 module-name = "toolapi._core"
