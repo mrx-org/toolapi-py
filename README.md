@@ -32,6 +32,14 @@ maturin develop
 maturin build --release --out dist --find-interpreter
 ```
 
+## Testing
+
+```bash
+uv run maturin develop
+cd test
+uv run test_toolapi.py
+```
+
 ## Installation
 
 Currently this package must be built locally. In the future it may be published to PyPI, using a GitHub Actions workflow generated with:

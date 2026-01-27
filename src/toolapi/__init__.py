@@ -1,5 +1,3 @@
-from toolapi._core import hello_from_bin
+from toolapi._core import sum_as_string
 
-
-def main() -> None:
-    print(hello_from_bin())
+__all__ = ["sum_as_string"]

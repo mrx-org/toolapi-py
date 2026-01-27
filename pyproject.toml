@@ -16,6 +16,12 @@ python-source = "src"
 [tool.uv]
 cache-keys = [{ file = "pyproject.toml" }, { file = "src/**/*.rs" }, { file = "Cargo.toml" }, { file = "Cargo.lock" }]
 
+[tool.uv.workspace]
+members = [
+    "test",
+    ".",
+]
+
 [build-system]
 requires = ["maturin>=1.11,<2.0"]
 build-backend = "maturin"
