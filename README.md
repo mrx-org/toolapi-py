@@ -34,9 +34,9 @@ maturin build --release --out dist --find-interpreter
 
 ## Testing
 
+Running with uv will automatically re-build the toolapi-py dependency:
+
 ```bash
-uv run maturin develop
-cd test
 uv run test_toolapi.py
 ```
 
