@@ -3726,13 +3726,16 @@ wheels = [
 [[package]]
 name = "toolapi"
 source = { editable = "." }
-dependencies = [
+
+[package.optional-dependencies]
+test = [
     { name = "mrzerocore", version = "0.2.4", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version < '3.9'" },
     { name = "mrzerocore", version = "0.4.3", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version >= '3.9'" },
 ]
 
 [package.metadata]
-requires-dist = [{ name = "mrzerocore", specifier = ">=0.2.4" }]
+requires-dist = [{ name = "mrzerocore", marker = "extra == 'test'", specifier = ">=0.2.4" }]
+provides-extras = ["test"]
 
 [[package]]
 name = "torch"

@@ -824,15 +824,6 @@ dependencies = [
 [[package]]
 name = "toolapi"
 version = "0.1.0"
-dependencies = [
- "num-complex",
- "pyo3",
- "toolapi 0.1.0 (git+https://github.com/mrx-org/toolapi.git)",
-]
-
-[[package]]
-name = "toolapi"
-version = "0.1.0"
 source = "git+https://github.com/mrx-org/toolapi.git#c4a30afcd3a64d1a752c12d1d8f0c20d3f5f9613"
 dependencies = [
  "axum",
@@ -844,6 +835,15 @@ dependencies = [
  "tokio",
  "tokio-tungstenite",
  "tungstenite",
+]
+
+[[package]]
+name = "toolapi-py"
+version = "0.1.0"
+dependencies = [
+ "num-complex",
+ "pyo3",
+ "toolapi",
 ]
 
 [[package]]
