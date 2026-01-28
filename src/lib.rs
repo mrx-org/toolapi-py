@@ -124,12 +124,7 @@ fn extract_voxel_shape(obj: &Bound<'_, PyAny>) -> PyResult<VoxelShape> {
 }
 
 fn extract_complex_vecs(obj: &Bound<'_, PyAny>, attr: &str) -> PyResult<Vec<Vec<Complex64>>> {
-    let outer: Vec<Vec<f64>> = obj.getattr(attr)?.extract()?;
-    // Each inner vec is real-valued; treat as real + 0i
-    Ok(outer
-        .into_iter()
-        .map(|inner| inner.into_iter().map(|r| Complex64::new(r, 0.0)).collect())
-        .collect())
+    obj.getattr(attr)?.extract()
 }
 
 fn obj_to_tissue_properties(obj: &Bound<'_, PyAny>) -> PyResult<toolapi::Value> {
@@ -359,6 +354,14 @@ fn value_to_obj(py: Python<'_>, value: toolapi::Value) -> PyResult<Py<PyAny>> {
             ))
             .map(|o| o.unbind())
         }
+        toolapi::Value::Signal(sig) => {
+            let outer = PyList::empty(py);
+            for row in sig.0 {
+                let inner = PyList::new(py, row)?;
+                outer.append(inner)?;
+            }
+            outer.into_py_any(py)
+        }
         _ => Err(PyTypeError::new_err(
             "unsupported Value type for Python conversion".to_string(),
         )),
@@ -378,8 +381,7 @@ fn complex_vecs_to_py(
 ) -> PyResult<Py<PyList>> {
     let outer = PyList::empty(py);
     for inner in vecs {
-        let reals: Vec<f64> = inner.iter().map(|c| c.re).collect();
-        outer.append(PyList::new(py, reals)?)?;
+        outer.append(PyList::new(py, inner)?)?;
     }
     Ok(outer.unbind())
 }
