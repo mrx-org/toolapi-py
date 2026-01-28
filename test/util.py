@@ -52,7 +52,7 @@ def phantom_dict_to_toolapi(phantom: PhantomDict) -> toolapi.value.MultiTissuePh
 def to_instant_events(seq: mr0.Sequence) -> toolapi.value.EventSeq:
     ie_seq = []
 
-    Event = toolapi.value.BlockSeq
+    Event = toolapi.value.Event
     for rep in seq:
         ie_seq.append(Event.Pulse(rep.pulse.angle, rep.pulse.phase))
         for ev in range(rep.event_count):
