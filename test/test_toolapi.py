@@ -13,7 +13,7 @@ seq = mr0.Sequence.import_file("assets/gre.seq")  # gre.seq tse.seq
 seq = util.to_instant_events(seq)
 
 phantom = PhantomDict.load("assets/brainweb-subj05/brainweb-subj05-3T.json")
-phantom = phantom.interpolate(64, 64, 64).slices([30])
+phantom = phantom.interpolate(128, 128, 64).slices([30])
 for tissue in phantom.values():
     tissue.D[:] = 0
     # tissue.T2[:] = 1e9
@@ -38,7 +38,7 @@ def sim_spdg(sequence, phantom):
 
 # %% Run the simulation!
 start = time()
-signal = torch.tensor(sim_spdg(seq, phantom))[0, :]
+signal = torch.tensor(sim_spdg(seq, phantom)["signal"])[0, :]
 end = time()
 
 print(f"Tool took {end - start:.3} s")
@@ -46,4 +46,16 @@ print(f"Tool took {end - start:.3} s")
 plt.figure()
 plt.plot(signal.abs())
 plt.grid()
+plt.show()
+
+kspace = signal.reshape(256, 256)
+reco = torch.fft.fftshift(torch.fft.fft2(torch.fft.fftshift(kspace)))
+
+plt.figure()
+plt.subplot(121)
+plt.imshow(reco.abs(), origin="lower", vmin=0)
+plt.axis("off")
+plt.subplot(122)
+plt.imshow(reco.angle(), origin="lower", vmin=-torch.pi, vmax=torch.pi, cmap="twilight")
+plt.axis("off")
 plt.show()
