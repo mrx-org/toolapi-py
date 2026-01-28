@@ -19,7 +19,17 @@ maturin build --release --out dist --find-interpreter
 maturin sdist --out dist
 ```
 
-No test suite or linter is currently configured.
+## Testing
+
+```bash
+uv run test/test_toolapi.py
+```
+
+This rebuilds toolapi-py automatically if needed.
+
+## Important: Rust `toolapi` dependency
+
+The Rust `toolapi` crate is available locally (see `Cargo.toml` path dependency). Do **not** clone it from GitHub or search in the Cargo git cache. If you need to read or modify the Rust `toolapi` crate, ask the user to add its directory to your working directories.
 
 ## Architecture
 
