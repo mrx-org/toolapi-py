@@ -87,7 +87,7 @@ fn obj_to_value(_py: Python<'_>, obj: Py<PyAny>) -> PyResult<toolapi::Value> {
             Ok(toolapi::Value::Float(f))
         } else if let Ok(s) = obj.extract::<String>() {
             Ok(toolapi::Value::String(s))
-        } else if let Ok(type_name) = obj.getattr("_type").and_then(|t| t.extract::<String>()) {
+        } else if let Ok(type_name) = obj.get_type().name().map(|n| n.to_string()) {
             match type_name.as_str() {
                 "TissueProperties" => obj_to_tissue_properties(obj),
                 "VoxelGridPhantom" => obj_to_voxel_grid_phantom(obj),
@@ -132,7 +132,7 @@ fn obj_to_tissue_properties(obj: &Bound<'_, PyAny>) -> PyResult<toolapi::Value> 
         t1: obj.getattr("t1")?.extract()?,
         t2: obj.getattr("t2")?.extract()?,
         t2dash: obj.getattr("t2dash")?.extract()?,
-        adc: obj.getattr("d")?.extract()?, // Python uses `d`, Rust uses `adc`
+        adc: obj.getattr("adc")?.extract()?,
     }))
 }
 
@@ -178,7 +178,7 @@ fn obj_to_multi_tissue_phantom(obj: &Bound<'_, PyAny>) -> PyResult<toolapi::Valu
             t1: props_obj.getattr("t1")?.extract()?,
             t2: props_obj.getattr("t2")?.extract()?,
             t2dash: props_obj.getattr("t2dash")?.extract()?,
-            adc: props_obj.getattr("d")?.extract()?,
+            adc: props_obj.getattr("adc")?.extract()?,
         };
         tissues.push(PhantomTissue { pd, b0, props });
     }

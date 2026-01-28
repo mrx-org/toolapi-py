@@ -9,11 +9,11 @@ import util
 from load_phantom import PhantomDict
 
 # %% Prepare sequence and phantom
-seq = mr0.Sequence.import_file("assets/gre.seq")  # gre.seq tse.seq
+seq = mr0.Sequence.import_file("test/assets/gre.seq")  # gre.seq tse.seq
 seq = util.to_instant_events(seq)
 
-phantom = PhantomDict.load("assets/brainweb-subj05/brainweb-subj05-3T.json")
-phantom = phantom.interpolate(128, 128, 64).slices([30])
+phantom = PhantomDict.load("test/assets/brainweb-subj05/brainweb-subj05-3T.json")
+phantom = phantom.interpolate(64, 64, 64).slices([30])
 for tissue in phantom.values():
     tissue.D[:] = 0
     # tissue.T2[:] = 1e9
@@ -43,19 +43,17 @@ end = time()
 
 print(f"Tool took {end - start:.3} s")
 
-plt.figure()
-plt.plot(signal.abs())
-plt.grid()
-plt.show()
-
 kspace = signal.reshape(256, 256)
 reco = torch.fft.fftshift(torch.fft.fft2(torch.fft.fftshift(kspace)))
 
 plt.figure()
-plt.subplot(121)
+plt.subplot(211)
+plt.plot(signal.abs())
+plt.grid()
+plt.subplot(223)
 plt.imshow(reco.abs(), origin="lower", vmin=0)
 plt.axis("off")
-plt.subplot(122)
+plt.subplot(224)
 plt.imshow(reco.angle(), origin="lower", vmin=-torch.pi, vmax=torch.pi, cmap="twilight")
 plt.axis("off")
 plt.show()
