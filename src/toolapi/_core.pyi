@@ -1,3 +1,5 @@
 from typing import Any, Callable
 
-def call(address: str, on_message: Callable[[str], bool] | None = None, /, **kwargs: Any) -> Any: ...
+def call(
+    address: str, input: Any, on_message: Callable[[str], bool] | None = None
+) -> Any: ...
