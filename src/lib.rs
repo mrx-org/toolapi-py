@@ -1,12 +1,10 @@
-use pyo3::exceptions::PyException;
 use pyo3::prelude::*;
 
 /// A Python module implemented in Rust.
 #[pymodule]
 mod _core {
-    use pyo3::create_exception;
-
     use super::*;
+    use pyo3::exceptions::PyException;
 
     #[pyfunction]
     #[pyo3(signature = (address, input, on_message=None))]
