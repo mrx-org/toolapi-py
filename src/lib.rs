@@ -1,19 +1,9 @@
-
-use num_complex::Complex64;
-use pyo3::exceptions::PyTypeError;
 use pyo3::types::{PyDict, PyList};
-use pyo3::{prelude::*, IntoPyObjectExt};
-use toolapi::value::atomic::{Vec3, Vec4};
-use toolapi::value::dynamic::{Dict, List};
-use toolapi::value::structured::{InstantSeqEvent, PhantomTissue, SegmentedPhantom, Volume};
+use pyo3::{IntoPyObjectExt, prelude::*};
+use toolapi::value::structured::{InstantSeqEvent, PhantomTissue, Volume};
 use toolapi::value::typed::{TypedDict, TypedList};
 
 // TODO: we should register new PyException classes for errors and use those in the code below
-
-mod extract;
-use extract::*;
-mod extract_typed;
-use extract_typed::*;
 
 /// A Python module implemented in Rust.
 #[pymodule]
@@ -27,11 +17,9 @@ mod _core {
     fn call(
         py: Python<'_>,
         address: &str,
-        input: Py<PyAny>,
+        input: toolapi::Value,
         on_message: Option<Py<PyAny>>,
     ) -> PyResult<Py<PyAny>> {
-        let input = obj_to_value(py, input)?;
-
         // Wraps the user callback, returns `true` (continue tool) if:
         // - no callback was provided
         // - callback returned true
@@ -64,52 +52,10 @@ mod _core {
 }
 
 // =============================================================================
-// Python -> Rust Value conversion
-// =============================================================================
-
-fn obj_to_value(py: Python<'_>, obj: Py<PyAny>) -> PyResult<toolapi::Value> {
-    let obj = obj.bind(py);
-    if obj.is_none() {
-        Ok(toolapi::Value::None(()))
-    } else if let Ok(b) = obj.extract::<bool>() {
-        Ok(toolapi::Value::Bool(b))
-    } else if let Ok(i) = obj.extract::<i64>() {
-        Ok(toolapi::Value::Int(i))
-    } else if let Ok(f) = obj.extract::<f64>() {
-        Ok(toolapi::Value::Float(f))
-    } else if let Ok(s) = obj.extract::<String>() {
-        Ok(toolapi::Value::Str(s))
-    } else if let Ok(c) = obj.extract::<Complex64>() {
-        Ok(toolapi::Value::Complex(c))
-    } else if obj.is_instance_of::<PyDict>() {
-        Ok(toolapi::Value::Dict(obj_to_dict(py, obj)?))
-    } else if obj.is_instance_of::<PyList>() {
-        Ok(toolapi::Value::List(obj_to_list(py, obj)?))
-    } else if let Ok(type_name) = obj.get_type().name().map(|n| n.to_string()) {
-        match type_name.as_str() {
-            "Vec3" => Ok(toolapi::Value::Vec3(obj_to_vec3(obj)?)),
-            "Vec4" => Ok(toolapi::Value::Vec4(obj_to_vec4(obj)?)),
-            "Volume" => Ok(toolapi::Value::Volume(obj_to_volume(py, obj)?)),
-            "PhantomTissue" => Ok(toolapi::Value::PhantomTissue(obj_to_phantom_tissue(py, obj)?)),
-            "SegmentedPhantom" => Ok(toolapi::Value::SegmentedPhantom(obj_to_segmented_phantom(py, obj)?)),
-            "InstantSeqEvent" => Ok(toolapi::Value::InstantSeqEvent(obj_to_instant_seq_event(py, obj)?)),
-            other => Err(PyTypeError::new_err(format!(
-                "unknown toolapi value type: {other}"
-            ))),
-        }
-    } else {
-        Err(PyTypeError::new_err(format!(
-            "unsupported Python type for Value conversion: {}",
-            obj.get_type().name()?
-        )))
-    }
-}
-
-
-
-// =============================================================================
 // Rust Value -> Python conversion
 // =============================================================================
+
+// TODO: could implement IntoPyObject in `toolapi` under `pyo3` feature flag
 
 fn value_to_obj(py: Python<'_>, value: toolapi::Value) -> PyResult<Py<PyAny>> {
     match value {

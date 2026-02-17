@@ -1,6 +1,6 @@
 [package]
 name = "toolapi-py"
-version = "0.1.3"
+version = "0.4.2"
 edition = "2024"
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
@@ -11,4 +11,4 @@ crate-type = ["cdylib"]
 [dependencies]
 num-complex = "0.4.6"
 pyo3 = { version = "0.27.1", features = ["extension-module", "abi3-py39", "num-complex"] }
-toolapi = { version = "0.4.1", features = ["client"] }
+toolapi = { version = "0.4.2", features = ["client", "pyo3"] }
