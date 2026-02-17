@@ -1,4 +1,3 @@
-use std::collections::HashMap;
 
 use num_complex::Complex64;
 use pyo3::exceptions::PyTypeError;
@@ -8,6 +7,13 @@ use toolapi::value::atomic::{Vec3, Vec4};
 use toolapi::value::dynamic::{Dict, List};
 use toolapi::value::structured::{InstantSeqEvent, PhantomTissue, SegmentedPhantom, Volume};
 use toolapi::value::typed::{TypedDict, TypedList};
+
+// TODO: we should register new PyException classes for errors and use those in the code below
+
+mod extract;
+use extract::*;
+mod extract_typed;
+use extract_typed::*;
 
 /// A Python module implemented in Rust.
 #[pymodule]
@@ -26,21 +32,31 @@ mod _core {
     ) -> PyResult<Py<PyAny>> {
         let input = obj_to_value(py, input)?;
 
+        // Wraps the user callback, returns `true` (continue tool) if:
+        // - no callback was provided
+        // - callback returned true
+        // Returns `false` (abort the tool) if:
+        // - callback raised an exception
+        // - return value was not a bool
+        // - callback returned false
         let on_message = |msg: String| -> bool {
-            // no on_message: continue. Exception or wrong return type: break.
-            if let Some(func) = on_message.as_ref() {
-                Python::attach(|py| {
-                    func.call1(py, (msg,))
-                        .map_or(false, |ret| ret.extract(py).unwrap_or(false))
-                })
-            } else {
-                true
+            match on_message.as_ref() {
+                // User provided a callback: try to call it
+                Some(func) => Python::attach(|py| {
+                    match func.call1(py, (msg,)) {
+                        // Call succeeded: convert result to bool (false on error)
+                        Ok(ret) => ret.extract(py).unwrap_or(false),
+                        // Callback raised an exception: stop tool
+                        Err(_) => false,
+                    }
+                }),
+                // No user callback: don't stop tool
+                None => true,
             }
         };
 
         let result = py
             .detach(|| toolapi::call(address, input, on_message))
-            // TODO: if done right we should create new python exception classes for this
             .map_err(|err| PyException::new_err(format!("ToolCallError: {err}")));
 
         result.and_then(|value| value_to_obj(py, value))
@@ -51,319 +67,45 @@ mod _core {
 // Python -> Rust Value conversion
 // =============================================================================
 
-fn obj_to_value(_py: Python<'_>, obj: Py<PyAny>) -> PyResult<toolapi::Value> {
-    Python::attach(|py| {
-        let obj = obj.bind(py);
-        if obj.is_none() {
-            Ok(toolapi::Value::None(()))
-        } else if let Ok(b) = obj.extract::<bool>() {
-            Ok(toolapi::Value::Bool(b))
-        } else if let Ok(i) = obj.extract::<i64>() {
-            Ok(toolapi::Value::Int(i))
-        } else if let Ok(f) = obj.extract::<f64>() {
-            Ok(toolapi::Value::Float(f))
-        } else if let Ok(s) = obj.extract::<String>() {
-            Ok(toolapi::Value::Str(s))
-        } else if let Ok(c) = obj.extract::<Complex64>() {
-            Ok(toolapi::Value::Complex(c))
-        } else if obj.is_instance_of::<PyDict>() {
-            obj_to_dict(py, obj)
-        } else if obj.is_instance_of::<PyList>() {
-            obj_to_list(py, obj)
-        } else if let Ok(type_name) = obj.get_type().name().map(|n| n.to_string()) {
-            match type_name.as_str() {
-                "Vec3" => obj_to_vec3(obj),
-                "Vec4" => obj_to_vec4(obj),
-                "Volume" => obj_to_volume(py, obj),
-                "PhantomTissue" => obj_to_phantom_tissue(py, obj),
-                "SegmentedPhantom" => obj_to_segmented_phantom(py, obj),
-                "InstantSeqEvent" => obj_to_instant_seq_event(py, obj),
-                other => Err(PyTypeError::new_err(format!(
-                    "unknown toolapi value type: {other}"
-                ))),
-            }
-        } else {
-            Err(PyTypeError::new_err(format!(
-                "unsupported Python type for Value conversion: {}",
-                obj.get_type().name()?
-            )))
-        }
-    })
-}
-
-fn obj_to_vec3(obj: &Bound<'_, PyAny>) -> PyResult<toolapi::Value> {
-    let data: Vec<f64> = obj.getattr("data")?.extract()?;
-    let arr: [f64; 3] = data
-        .try_into()
-        .map_err(|_| PyTypeError::new_err("Vec3.data must have 3 elements"))?;
-    Ok(toolapi::Value::Vec3(Vec3(arr)))
-}
-
-fn obj_to_vec4(obj: &Bound<'_, PyAny>) -> PyResult<toolapi::Value> {
-    let data: Vec<f64> = obj.getattr("data")?.extract()?;
-    let arr: [f64; 4] = data
-        .try_into()
-        .map_err(|_| PyTypeError::new_err("Vec4.data must have 4 elements"))?;
-    Ok(toolapi::Value::Vec4(Vec4(arr)))
-}
-
-fn obj_to_volume(py: Python<'_>, obj: &Bound<'_, PyAny>) -> PyResult<toolapi::Value> {
-    let shape_vec: Vec<u64> = obj.getattr("shape")?.extract()?;
-    let shape: [u64; 3] = shape_vec
-        .try_into()
-        .map_err(|_| PyTypeError::new_err("Volume.shape must have 3 elements"))?;
-
-    let affine_obj = obj.getattr("affine")?;
-    let affine = extract_affine(&affine_obj)?;
-
-    let data_obj = obj.getattr("data")?;
-    let data = py_list_to_typed_list(py, &data_obj)?;
-
-    Ok(toolapi::Value::Volume(Volume {
-        shape,
-        affine,
-        data,
-    }))
-}
-
-fn extract_affine(obj: &Bound<'_, PyAny>) -> PyResult<[[f64; 4]; 3]> {
-    let rows: Vec<Vec<f64>> = obj.extract()?;
-    if rows.len() != 3 {
-        return Err(PyTypeError::new_err("affine must have 3 rows"));
-    }
-    let mut affine = [[0.0f64; 4]; 3];
-    for (i, row) in rows.into_iter().enumerate() {
-        let arr: [f64; 4] = row
-            .try_into()
-            .map_err(|_| PyTypeError::new_err("each affine row must have 4 elements"))?;
-        affine[i] = arr;
-    }
-    Ok(affine)
-}
-
-fn obj_to_phantom_tissue(py: Python<'_>, obj: &Bound<'_, PyAny>) -> PyResult<toolapi::Value> {
-    let density = extract_volume(py, &obj.getattr("density")?)?;
-    let db0 = extract_volume(py, &obj.getattr("db0")?)?;
-    Ok(toolapi::Value::PhantomTissue(PhantomTissue {
-        density,
-        db0,
-        t1: obj.getattr("t1")?.extract()?,
-        t2: obj.getattr("t2")?.extract()?,
-        t2dash: obj.getattr("t2dash")?.extract()?,
-        adc: obj.getattr("adc")?.extract()?,
-    }))
-}
-
-fn extract_volume(py: Python<'_>, obj: &Bound<'_, PyAny>) -> PyResult<Volume> {
-    let shape_vec: Vec<u64> = obj.getattr("shape")?.extract()?;
-    let shape: [u64; 3] = shape_vec
-        .try_into()
-        .map_err(|_| PyTypeError::new_err("Volume.shape must have 3 elements"))?;
-    let affine_obj = obj.getattr("affine")?;
-    let affine = extract_affine(&affine_obj)?;
-    let data_obj = obj.getattr("data")?;
-    let data = py_list_to_typed_list(py, &data_obj)?;
-    Ok(Volume {
-        shape,
-        affine,
-        data,
-    })
-}
-
-fn obj_to_segmented_phantom(py: Python<'_>, obj: &Bound<'_, PyAny>) -> PyResult<toolapi::Value> {
-    let tissues_list = obj.getattr("tissues")?;
-    let tissues_py = tissues_list.cast::<PyList>()?;
-    let mut tissues = Vec::with_capacity(tissues_py.len());
-    for item in tissues_py.iter() {
-        tissues.push(extract_phantom_tissue(py, &item)?);
-    }
-
-    let b1_tx = extract_volume_list(py, &obj.getattr("b1_tx")?)?;
-    let b1_rx = extract_volume_list(py, &obj.getattr("b1_rx")?)?;
-
-    Ok(toolapi::Value::SegmentedPhantom(SegmentedPhantom {
-        tissues,
-        b1_tx,
-        b1_rx,
-    }))
-}
-
-fn extract_phantom_tissue(py: Python<'_>, obj: &Bound<'_, PyAny>) -> PyResult<PhantomTissue> {
-    let density = extract_volume(py, &obj.getattr("density")?)?;
-    let db0 = extract_volume(py, &obj.getattr("db0")?)?;
-    Ok(PhantomTissue {
-        density,
-        db0,
-        t1: obj.getattr("t1")?.extract()?,
-        t2: obj.getattr("t2")?.extract()?,
-        t2dash: obj.getattr("t2dash")?.extract()?,
-        adc: obj.getattr("adc")?.extract()?,
-    })
-}
-
-fn extract_volume_list(py: Python<'_>, obj: &Bound<'_, PyAny>) -> PyResult<Vec<Volume>> {
-    let list = obj.cast::<PyList>()?;
-    let mut volumes = Vec::with_capacity(list.len());
-    for item in list.iter() {
-        volumes.push(extract_volume(py, &item)?);
-    }
-    Ok(volumes)
-}
-
-fn obj_to_instant_seq_event(py: Python<'_>, obj: &Bound<'_, PyAny>) -> PyResult<toolapi::Value> {
-    let event = extract_instant_seq_event(py, obj)?;
-    Ok(toolapi::Value::InstantSeqEvent(event))
-}
-
-fn extract_instant_seq_event(_py: Python<'_>, obj: &Bound<'_, PyAny>) -> PyResult<InstantSeqEvent> {
-    let variant: String = obj.getattr("variant")?.extract()?;
-    let fields = obj.getattr("fields")?;
-    match variant.as_str() {
-        "Pulse" => Ok(InstantSeqEvent::Pulse {
-            angle: fields.get_item("angle")?.extract()?,
-            phase: fields.get_item("phase")?.extract()?,
-        }),
-        "Fid" => {
-            let kt_obj = fields.get_item("kt")?;
-            // kt is a Vec4 wrapper object
-            let kt_data: Vec<f64> = kt_obj.getattr("data")?.extract()?;
-            let kt_arr: [f64; 4] = kt_data
-                .try_into()
-                .map_err(|_| PyTypeError::new_err("kt must have 4 elements"))?;
-            Ok(InstantSeqEvent::Fid { kt: Vec4(kt_arr) })
-        }
-        "Adc" => Ok(InstantSeqEvent::Adc {
-            phase: fields.get_item("phase")?.extract()?,
-        }),
-        other => Err(PyTypeError::new_err(format!(
-            "unknown InstantSeqEvent variant: {other}"
-        ))),
-    }
-}
-
-/// Convert a Python dict (with string keys and Value-convertible values) to Value::Dict.
-fn obj_to_dict(py: Python<'_>, obj: &Bound<'_, PyAny>) -> PyResult<toolapi::Value> {
-    let dict = obj.cast::<PyDict>()?;
-    let mut map = HashMap::new();
-    for (key, value) in dict.iter() {
-        let key: String = key.extract()?;
-        let value = obj_to_value(py, value.into_py_any(py)?)?;
-        map.insert(key, value);
-    }
-    Ok(toolapi::Value::Dict(Dict(map)))
-}
-
-/// Convert a Python list to Value::List (heterogeneous).
-fn obj_to_list(py: Python<'_>, obj: &Bound<'_, PyAny>) -> PyResult<toolapi::Value> {
-    let list = obj.cast::<PyList>()?;
-    let mut items = Vec::with_capacity(list.len());
-    for item in list.iter() {
-        items.push(obj_to_value(py, item.into_py_any(py)?)?);
-    }
-    Ok(toolapi::Value::List(List(items)))
-}
-
-/// Convert a Python list to a TypedList by inspecting element types.
-///
-/// Heuristic: look at the first element to determine the type, then extract
-/// all elements as that type. Falls back to TypedList::Float(vec![]) for
-/// empty lists.
-fn py_list_to_typed_list(py: Python<'_>, obj: &Bound<'_, PyAny>) -> PyResult<TypedList> {
-    let list = obj.cast::<PyList>()?;
-    if list.is_empty() {
-        return Ok(TypedList::Float(vec![]));
-    }
-
-    let first = list.get_item(0)?;
-
-    // Try complex before float, since complex can't extract as f64
-    if first.extract::<Complex64>().is_ok() {
-        let data: Vec<Complex64> = list.extract()?;
-        return Ok(TypedList::Complex(data));
-    }
-    if first.extract::<f64>().is_ok() {
-        let data: Vec<f64> = list.extract()?;
-        return Ok(TypedList::Float(data));
-    }
-    if first.extract::<i64>().is_ok() {
-        let data: Vec<i64> = list.extract()?;
-        return Ok(TypedList::Int(data));
-    }
-    if first.extract::<bool>().is_ok() {
-        let data: Vec<bool> = list.extract()?;
-        return Ok(TypedList::Bool(data));
-    }
-    if first.extract::<String>().is_ok() {
-        let data: Vec<String> = list.extract()?;
-        return Ok(TypedList::Str(data));
-    }
-
-    // Check for structured types by class name
-    if let Ok(type_name) = first.get_type().name().map(|n| n.to_string()) {
+fn obj_to_value(py: Python<'_>, obj: Py<PyAny>) -> PyResult<toolapi::Value> {
+    let obj = obj.bind(py);
+    if obj.is_none() {
+        Ok(toolapi::Value::None(()))
+    } else if let Ok(b) = obj.extract::<bool>() {
+        Ok(toolapi::Value::Bool(b))
+    } else if let Ok(i) = obj.extract::<i64>() {
+        Ok(toolapi::Value::Int(i))
+    } else if let Ok(f) = obj.extract::<f64>() {
+        Ok(toolapi::Value::Float(f))
+    } else if let Ok(s) = obj.extract::<String>() {
+        Ok(toolapi::Value::Str(s))
+    } else if let Ok(c) = obj.extract::<Complex64>() {
+        Ok(toolapi::Value::Complex(c))
+    } else if obj.is_instance_of::<PyDict>() {
+        Ok(toolapi::Value::Dict(obj_to_dict(py, obj)?))
+    } else if obj.is_instance_of::<PyList>() {
+        Ok(toolapi::Value::List(obj_to_list(py, obj)?))
+    } else if let Ok(type_name) = obj.get_type().name().map(|n| n.to_string()) {
         match type_name.as_str() {
-            "Vec3" => {
-                let mut data = Vec::with_capacity(list.len());
-                for item in list.iter() {
-                    let v: Vec<f64> = item.getattr("data")?.extract()?;
-                    let arr: [f64; 3] = v
-                        .try_into()
-                        .map_err(|_| PyTypeError::new_err("Vec3.data must have 3 elements"))?;
-                    data.push(Vec3(arr));
-                }
-                return Ok(TypedList::Vec3(data));
-            }
-            "Vec4" => {
-                let mut data = Vec::with_capacity(list.len());
-                for item in list.iter() {
-                    let v: Vec<f64> = item.getattr("data")?.extract()?;
-                    let arr: [f64; 4] = v
-                        .try_into()
-                        .map_err(|_| PyTypeError::new_err("Vec4.data must have 4 elements"))?;
-                    data.push(Vec4(arr));
-                }
-                return Ok(TypedList::Vec4(data));
-            }
-            "InstantSeqEvent" => {
-                let mut data = Vec::with_capacity(list.len());
-                for item in list.iter() {
-                    data.push(extract_instant_seq_event(py, &item)?);
-                }
-                return Ok(TypedList::InstantSeqEvent(data));
-            }
-            "Volume" => {
-                let mut data = Vec::with_capacity(list.len());
-                for item in list.iter() {
-                    data.push(extract_volume(py, &item)?);
-                }
-                return Ok(TypedList::Volume(data));
-            }
-            "PhantomTissue" => {
-                let mut data = Vec::with_capacity(list.len());
-                for item in list.iter() {
-                    data.push(extract_phantom_tissue(py, &item)?);
-                }
-                return Ok(TypedList::PhantomTissue(data));
-            }
-            "SegmentedPhantom" => {
-                let mut data = Vec::with_capacity(list.len());
-                for item in list.iter() {
-                    // Reuse the extraction logic, stripping the Value wrapper
-                    let val = obj_to_value(py, item.into_py_any(py)?)?;
-                    match val {
-                        toolapi::Value::SegmentedPhantom(sp) => data.push(sp),
-                        _ => return Err(PyTypeError::new_err("expected SegmentedPhantom in list")),
-                    }
-                }
-                return Ok(TypedList::SegmentedPhantom(data));
-            }
-            _ => {}
+            "Vec3" => Ok(toolapi::Value::Vec3(obj_to_vec3(obj)?)),
+            "Vec4" => Ok(toolapi::Value::Vec4(obj_to_vec4(obj)?)),
+            "Volume" => Ok(toolapi::Value::Volume(obj_to_volume(py, obj)?)),
+            "PhantomTissue" => Ok(toolapi::Value::PhantomTissue(obj_to_phantom_tissue(py, obj)?)),
+            "SegmentedPhantom" => Ok(toolapi::Value::SegmentedPhantom(obj_to_segmented_phantom(py, obj)?)),
+            "InstantSeqEvent" => Ok(toolapi::Value::InstantSeqEvent(obj_to_instant_seq_event(py, obj)?)),
+            other => Err(PyTypeError::new_err(format!(
+                "unknown toolapi value type: {other}"
+            ))),
         }
+    } else {
+        Err(PyTypeError::new_err(format!(
+            "unsupported Python type for Value conversion: {}",
+            obj.get_type().name()?
+        )))
     }
-
-    Err(PyTypeError::new_err(
-        "cannot determine TypedList element type from list contents",
-    ))
 }
+
+
 
 // =============================================================================
 // Rust Value -> Python conversion
