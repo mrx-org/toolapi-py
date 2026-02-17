@@ -1,11 +1,11 @@
 use pyo3::exceptions::PyException;
 use pyo3::prelude::*;
 
-// TODO: we should register new PyException classes for errors and use those in the code below
-
 /// A Python module implemented in Rust.
 #[pymodule]
 mod _core {
+    use pyo3::create_exception;
+
     use super::*;
 
     #[pyfunction]
