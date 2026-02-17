@@ -11,4 +11,4 @@ crate-type = ["cdylib"]
 [dependencies]
 num-complex = "0.4.6"
 pyo3 = { version = "0.27.1", features = ["extension-module", "abi3-py39", "num-complex"] }
-toolapi = { version = "0.4.2", features = ["client", "pyo3"] }
+toolapi = { version = "0.4.3", features = ["client", "pyo3"] }
