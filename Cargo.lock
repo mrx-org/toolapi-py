@@ -961,9 +961,9 @@ dependencies = [
 
 [[package]]
 name = "toolapi"
-version = "0.4.3"
+version = "0.4.5"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "9969cc0f009751bc747cd8ebeda5b524f3fcb591fc362959dc0140cca7c2676c"
+checksum = "043b833acff2be4f99063a7fa50676c96fddb7a835a88c21e76e21a0adbdba64"
 dependencies = [
  "axum",
  "futures",
@@ -984,7 +984,7 @@ dependencies = [
 
 [[package]]
 name = "toolapi-py"
-version = "0.4.3"
+version = "0.4.5"
 dependencies = [
  "num-complex",
  "pyo3",

@@ -98,13 +98,13 @@ class SegmentedPhantom:
     Rust::
 
         pub struct SegmentedPhantom {
-            pub tissues: Vec<PhantomTissue>,
+            pub tissues: HashMap<String, PhantomTissue>,
             pub b1_tx: Vec<Volume>,
             pub b1_rx: Vec<Volume>,
         }
     """
 
-    tissues: list[PhantomTissue]
+    tissues: dict[str, PhantomTissue]
     b1_tx: list[Volume] = field(default_factory=list)
     b1_rx: list[Volume] = field(default_factory=list)
 
