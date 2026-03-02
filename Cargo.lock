@@ -984,7 +984,7 @@ dependencies = [
 
 [[package]]
 name = "toolapi-py"
-version = "0.4.5"
+version = "0.5.0"
 dependencies = [
  "num-complex",
  "pyo3",
